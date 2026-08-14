@@ -3,7 +3,9 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Search, ShoppingBag, ArrowLeft, Check, Plus, Minus, X, LayoutGrid, List } from 'lucide-react'
+import { Search, ShoppingBag, ArrowLeft, Check, X, LayoutGrid, List } from 'lucide-react'
+import { ProductCard } from '@/components/product-card'
+import { ProductImage } from '@/components/ui/product-image'
 
 type Product = {
   id: string
@@ -54,7 +56,7 @@ function PedidoContent() {
     async function loadData() {
       try {
         setLoading(true)
-        // 1. Fetch units to get current unit info
+        // 1. Fetch units list to get current unit name
         const resUnits = await fetch('/api/units')
         const unitsList: Unit[] = await resUnits.json()
         const currentUnit = unitsList.find((u) => u.id === unitId)
@@ -65,7 +67,7 @@ function PedidoContent() {
         }
         setUnit(currentUnit)
 
-        // 2. Fetch active products
+        // 2. Fetch products
         const resProducts = await fetch('/api/products')
         const productsList: Product[] = await resProducts.json()
         setProducts(productsList)
@@ -103,7 +105,8 @@ function PedidoContent() {
 
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+      const matchSearch =
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
         (p.brand && p.brand.toLowerCase().includes(search.toLowerCase()))
       const matchCat = !category || p.category === category
       return matchSearch && matchCat
@@ -115,8 +118,8 @@ function PedidoContent() {
     return item ? item.quantityRequested : 0
   }
 
-  async function updateQuantity(product: Product, quantity: number) {
-    if (!orderId) return
+  async function handleConfirmQuantity(product: Product, quantity: number): Promise<boolean> {
+    if (!orderId) return false
     setLoadingProductId(product.id)
 
     try {
@@ -131,7 +134,9 @@ function PedidoContent() {
           if (res.ok) {
             setItems((prev) => prev.filter((i) => i.productId !== product.id))
           }
+          return res.ok
         }
+        return true
       } else {
         const res = await fetch(`/api/orders/${orderId}/items`, {
           method: 'POST',
@@ -148,9 +153,11 @@ function PedidoContent() {
             return [...prev, { ...saved, product }]
           })
         }
+        return res.ok
       }
     } catch (err) {
       console.error(err)
+      return false
     } finally {
       setLoadingProductId(null)
     }
@@ -203,11 +210,9 @@ function PedidoContent() {
     )
   }
 
-  const totalItemsCount = items.reduce((acc, item) => acc + item.quantityRequested, 0)
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      {/* Top Header */}
+      {/* Top Navigation */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -225,44 +230,37 @@ function PedidoContent() {
                 </span>
                 <h1 className="font-bold text-slate-800 text-base">{unit?.name}</h1>
               </div>
-              <p className="text-xs text-slate-400">Monte o seu pedido mensal adicionando os produtos abaixo.</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs text-slate-400">Itens no rascunho</p>
-              <p className="text-sm font-bold text-slate-800">{items.length} produtos ({totalItemsCount} un)</p>
+              <p className="text-xs text-slate-400">Selecione os produtos e envie seu pedido mensal.</p>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Catalog Section */}
+          {/* Catalog Left Section */}
           <div className="flex-1 space-y-4">
-            {/* Filter Bar */}
+            {/* Filter controls */}
             <div className="bg-white border rounded-xl p-3 flex flex-wrap gap-3 items-center justify-between shadow-sm">
               <div className="flex flex-wrap gap-3 flex-1 items-center">
                 <div className="relative flex-1 min-w-[200px] max-w-md">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Buscar produto por nome ou marca..."
+                    placeholder="Buscar produto..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
                   />
                 </div>
 
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="border rounded-lg px-3 py-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
                 >
-                  <option value="">Todas as categorias ({categories.length})</option>
+                  <option value="">Todas as categorias</option>
                   {categories.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -271,151 +269,106 @@ function PedidoContent() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => setView('cards')}
-                  className={`p-1.5 rounded-md text-xs font-medium transition-colors ${
-                    view === 'cards' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  title="Cards"
+                  className={`px-3 py-1.5 text-sm rounded-md border font-medium transition-colors ${
+                    view === 'cards'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
-                  title="Visualização em Cards"
                 >
                   <LayoutGrid className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setView('list')}
-                  className={`p-1.5 rounded-md text-xs font-medium transition-colors ${
-                    view === 'list' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  title="Lista"
+                  className={`px-3 py-1.5 text-sm rounded-md border font-medium transition-colors ${
+                    view === 'list'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-600 hover:bg-slate-50'
                   }`}
-                  title="Visualização em Lista"
                 >
                   <List className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            {/* Product Cards */}
+            {/* Cards View */}
             {view === 'cards' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredProducts.map((p) => {
-                  const qty = cartQuantity(p.id)
-                  const isLoadingThis = loadingProductId === p.id
-
-                  return (
-                    <div
-                      key={p.id}
-                      className="bg-white border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold text-slate-800 text-sm leading-snug">{p.name}</h3>
-                          {p.category && (
-                            <span className="text-[10px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full shrink-0">
-                              {p.category}
-                            </span>
-                          )}
-                        </div>
-                        {p.description && (
-                          <p className="text-xs text-slate-400 line-clamp-2">{p.description}</p>
-                        )}
-                        <div className="text-xs text-slate-500">
-                          Unidade: <span className="font-semibold text-slate-700">{p.unitOfMeasure}</span>
-                          {p.brand && <span className="ml-2 text-slate-400">• {p.brand}</span>}
-                        </div>
-                      </div>
-
-                      <div className="pt-4 mt-3 border-t flex items-center justify-between gap-2">
-                        {qty === 0 ? (
-                          <button
-                            disabled={isLoadingThis}
-                            onClick={() => updateQuantity(p, 1)}
-                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
-                          >
-                            <Plus className="h-3.5 w-3.5" /> Adicionar ao Pedido
-                          </button>
-                        ) : (
-                          <div className="w-full flex items-center justify-between bg-indigo-50 border border-indigo-200 p-1 rounded-lg">
-                            <button
-                              disabled={isLoadingThis}
-                              onClick={() => updateQuantity(p, qty - 1)}
-                              className="p-1 rounded bg-white text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50"
-                            >
-                              <Minus className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="text-sm font-bold text-indigo-950 px-2">
-                              {qty} <span className="text-xs font-normal text-indigo-700">{p.unitOfMeasure}</span>
-                            </span>
-                            <button
-                              disabled={isLoadingThis}
-                              onClick={() => updateQuantity(p, qty + 1)}
-                              className="p-1 rounded bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-
+                {filteredProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    quantityInCart={cartQuantity(product.id)}
+                    isLoading={loadingProductId === product.id}
+                    onConfirm={handleConfirmQuantity}
+                  />
+                ))}
                 {filteredProducts.length === 0 && (
-                  <div className="col-span-full py-12 text-center text-slate-400 text-sm">
-                    Nenhum produto encontrado com o filtro aplicado.
-                  </div>
+                  <p className="col-span-full text-slate-400 text-sm py-8 text-center">
+                    Nenhum produto encontrado.
+                  </p>
                 )}
               </div>
             )}
 
             {/* List View */}
             {view === 'list' && (
-              <div className="bg-white border rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b bg-slate-50 text-left text-slate-500 text-xs">
-                      <th className="px-4 py-3 font-semibold">Produto</th>
-                      <th className="px-4 py-3 font-semibold">Categoria</th>
-                      <th className="px-4 py-3 font-semibold">Unidade</th>
-                      <th className="px-4 py-3 font-semibold text-right">Quantidade</th>
+                    <tr className="border-b bg-slate-50 text-left text-slate-500">
+                      <th className="px-4 py-3 font-medium">Produto</th>
+                      <th className="px-4 py-3 font-medium">Categoria</th>
+                      <th className="px-4 py-3 font-medium">Unidade</th>
+                      <th className="px-4 py-3 font-medium text-right">Qtd.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {filteredProducts.map((p) => {
-                      const qty = cartQuantity(p.id)
-                      const isLoadingThis = loadingProductId === p.id
-
+                    {filteredProducts.map((product) => {
+                      const qty = cartQuantity(product.id)
+                      const isLoading = loadingProductId === product.id
                       return (
-                        <tr key={p.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium text-slate-800">
-                            {p.name}
-                            {p.brand && <span className="text-slate-400 text-xs ml-2">({p.brand})</span>}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 text-xs">{p.category || '—'}</td>
-                          <td className="px-4 py-3 text-slate-500 text-xs">{p.unitOfMeasure}</td>
+                        <tr key={product.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-800">{product.name}</td>
+                          <td className="px-4 py-3 text-slate-500">{product.category ?? '—'}</td>
+                          <td className="px-4 py-3 text-slate-500">{product.unitOfMeasure}</td>
                           <td className="px-4 py-3 text-right">
                             {qty === 0 ? (
                               <button
-                                disabled={isLoadingThis}
-                                onClick={() => updateQuantity(p, 1)}
-                                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+                                disabled={isLoading}
+                                onClick={() => handleConfirmQuantity(product, 1)}
+                                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-medium disabled:opacity-50"
                               >
                                 + Adicionar
                               </button>
                             ) : (
-                              <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 p-0.5 rounded-lg">
+                              <div className="inline-flex items-center gap-1">
                                 <button
-                                  disabled={isLoadingThis}
-                                  onClick={() => updateQuantity(p, qty - 1)}
-                                  className="p-1 rounded bg-white text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:opacity-50"
+                                  disabled={isLoading}
+                                  onClick={() => handleConfirmQuantity(product, qty - 1)}
+                                  className="w-7 h-7 flex items-center justify-center rounded border bg-white hover:bg-slate-100 disabled:opacity-50 text-xs font-bold"
                                 >
-                                  <Minus className="h-3 w-3" />
+                                  −
                                 </button>
-                                <span className="text-xs font-bold text-indigo-950 px-2">{qty}</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={qty}
+                                  onChange={(e) =>
+                                    handleConfirmQuantity(product, parseInt(e.target.value) || 0)
+                                  }
+                                  className="w-12 text-center border rounded px-1 py-0.5 text-xs font-bold"
+                                />
                                 <button
-                                  disabled={isLoadingThis}
-                                  onClick={() => updateQuantity(p, qty + 1)}
-                                  className="p-1 rounded bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                                  disabled={isLoading}
+                                  onClick={() => handleConfirmQuantity(product, qty + 1)}
+                                  className="w-7 h-7 flex items-center justify-center rounded border bg-white hover:bg-slate-100 disabled:opacity-50 text-xs font-bold"
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  +
                                 </button>
                               </div>
                             )}
@@ -429,70 +382,52 @@ function PedidoContent() {
             )}
           </div>
 
-          {/* Cart Sidebar */}
-          <div className="w-full lg:w-80 shrink-0">
-            <div className="bg-white border rounded-xl p-5 shadow-sm sticky top-20 space-y-4">
-              <div className="flex items-center justify-between border-b pb-3">
-                <div className="flex items-center gap-2">
-                  <ShoppingBag className="h-5 w-5 text-indigo-600" />
-                  <h2 className="font-bold text-slate-800">Resumo do Pedido</h2>
-                </div>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                  {items.length} itens
-                </span>
-              </div>
-
+          {/* Cart Right Drawer */}
+          <div className="w-full lg:w-72 shrink-0">
+            <div className="bg-white border rounded-lg p-4 sticky top-20 space-y-4 shadow-sm">
+              <h2 className="font-semibold text-slate-800">Meu Pedido</h2>
               {items.length === 0 ? (
-                <div className="py-8 text-center space-y-2">
-                  <p className="text-sm font-medium text-slate-400">Nenhum item adicionado ainda.</p>
-                  <p className="text-xs text-slate-400">Escolha os produtos no catálogo para adicionar ao pedido.</p>
-                </div>
+                <p className="text-slate-400 text-sm">Nenhum item adicionado.</p>
               ) : (
-                <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                <ul className="space-y-2 max-h-96 overflow-y-auto pr-1 divide-y divide-slate-100">
                   {items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 text-xs bg-slate-50 border rounded-lg p-2.5"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-slate-800 truncate">{item.product.name}</p>
-                        <p className="text-slate-400 text-[10px]">{item.product.unitOfMeasure}</p>
+                    <li key={item.id} className="flex items-center gap-2 text-sm pt-2 first:pt-0">
+                      <div className="h-10 w-10 rounded overflow-hidden shrink-0">
+                        <ProductImage
+                          imageUrl={item.product.imageUrl}
+                          name={item.product.name}
+                          category={item.product.category}
+                          className="h-full w-full"
+                        />
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="font-bold text-slate-900 bg-white border px-2 py-1 rounded">
-                          × {item.quantityRequested}
-                        </span>
-                        <button
-                          onClick={() => updateQuantity(item.product, 0)}
-                          className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
-                          title="Remover item"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
+                      <span className="text-slate-700 truncate flex-1 text-xs font-medium">
+                        {item.product.name}
+                      </span>
+                      <span className="shrink-0 font-bold text-slate-800 text-xs">
+                        × {item.quantityRequested}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmQuantity(item.product, 0)}
+                        className="shrink-0 text-slate-400 hover:text-red-500 transition-colors p-1"
+                        aria-label={`Remover ${item.product.name}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
-
-              <div className="border-t pt-4 space-y-3">
-                <div className="text-xs text-slate-500 flex justify-between">
-                  <span>Total de unidades:</span>
-                  <span className="font-bold text-slate-800">{totalItemsCount}</span>
-                </div>
-
+              <div className="border-t pt-3 space-y-3">
+                <p className="text-xs text-slate-500">
+                  {items.length} produto(s) — rascunho salvo no banco
+                </p>
                 <button
-                  disabled={items.length === 0 || submitting}
+                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-sm shadow-sm transition-colors disabled:opacity-50"
                   onClick={handleSubmitOrder}
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={submitting || items.length === 0}
                 >
-                  {submitting ? (
-                    'Enviando Pedido...'
-                  ) : (
-                    <>
-                      <Check className="h-4 w-4" /> Enviar Pedido Final
-                    </>
-                  )}
+                  {submitting ? 'Enviando...' : 'Enviar Pedido'}
                 </button>
               </div>
             </div>
