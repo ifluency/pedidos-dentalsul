@@ -58,7 +58,7 @@ export const orders = pgTable('orders', {
   id: uuid('id').primaryKey().defaultRandom(),
   cycleId: uuid('cycle_id').notNull().references(() => orderCycles.id),
   unitId: uuid('unit_id').notNull().references(() => units.id),
-  createdBy: uuid('created_by').references(() => users.id), // nullable — anonymous orders
+  createdBy: uuid('created_by').notNull().references(() => users.id),
   status: text('status').notNull().default('draft'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

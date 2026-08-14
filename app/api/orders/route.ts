@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { orders, orderCycles } from '@/db/schema'
+import { orders, orderCycles, users } from '@/db/schema'
 
 // GET /api/orders?unitId=xxx  → returns or creates a draft order for the unit in the open cycle
 export async function GET(req: Request) {
@@ -22,9 +22,14 @@ export async function GET(req: Request) {
 
     if (existing) return NextResponse.json({ cycleId: cycle.id, order: existing })
 
+    const unitUser = await db.query.users.findFirst({
+      where: eq(users.unitId, unitId),
+    })
+    const creatorId = unitUser?.id || cycle.createdBy
+
     const [order] = await db
       .insert(orders)
-      .values({ cycleId: cycle.id, unitId, status: 'draft' })
+      .values({ cycleId: cycle.id, unitId, createdBy: creatorId, status: 'draft' })
       .returning()
 
     return NextResponse.json({ cycleId: cycle.id, order: { ...order, items: [] } })
