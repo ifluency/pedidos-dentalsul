@@ -58,8 +58,19 @@ function PedidoContent() {
         setLoading(true)
         // 1. Fetch units list to get current unit name
         const resUnits = await fetch('/api/units')
-        const unitsList: Unit[] = await resUnits.json()
-        const currentUnit = unitsList.find((u) => u.id === unitId)
+        const unitsText = await resUnits.text()
+        let unitsList: Unit[] = []
+        try {
+          unitsList = unitsText ? JSON.parse(unitsText) : []
+        } catch {}
+
+        if (!resUnits.ok) {
+          setErrorMsg((unitsList as any)?.error || `Erro ao carregar unidades (Status ${resUnits.status}).`)
+          setLoading(false)
+          return
+        }
+
+        const currentUnit = Array.isArray(unitsList) ? unitsList.find((u) => u.id === unitId) : null
         if (!currentUnit) {
           setErrorMsg('Unidade não encontrada.')
           setLoading(false)
@@ -69,25 +80,41 @@ function PedidoContent() {
 
         // 2. Fetch products
         const resProducts = await fetch('/api/products')
-        const productsList: Product[] = await resProducts.json()
-        setProducts(productsList)
+        const productsText = await resProducts.text()
+        let productsList: Product[] = []
+        try {
+          productsList = productsText ? JSON.parse(productsText) : []
+        } catch {}
+
+        if (!resProducts.ok) {
+          setErrorMsg((productsList as any)?.error || `Erro ao carregar produtos (Status ${resProducts.status}).`)
+          setLoading(false)
+          return
+        }
+        setProducts(Array.isArray(productsList) ? productsList : [])
 
         // 3. Fetch/Create draft order
         const resOrder = await fetch(`/api/orders?unitId=${unitId}`)
+        const orderText = await resOrder.text()
+        let dataOrder: any = null
+        try {
+          dataOrder = orderText ? JSON.parse(orderText) : null
+        } catch {}
+
         if (!resOrder.ok) {
-          const err = await resOrder.json()
-          if (err.error === 'no_open_cycle') {
+          if (dataOrder?.error === 'no_open_cycle') {
             setErrorMsg('Nenhum pedido mensal aberto no momento.')
           } else {
-            setErrorMsg(err.error || 'Erro ao carregar pedido.')
+            setErrorMsg(dataOrder?.error || `Erro ao carregar pedido (Status ${resOrder.status}).`)
           }
           setLoading(false)
           return
         }
 
-        const dataOrder = await resOrder.json()
-        setOrderId(dataOrder.order.id)
-        setItems(dataOrder.order.items || [])
+        if (dataOrder?.order) {
+          setOrderId(dataOrder.order.id)
+          setItems(dataOrder.order.items || [])
+        }
       } catch (err: any) {
         setErrorMsg(err?.message || 'Erro ao conectar ao servidor.')
       } finally {
@@ -144,14 +171,21 @@ function PedidoContent() {
           body: JSON.stringify({ productId: product.id, quantityRequested: quantity }),
         })
         if (res.ok) {
-          const saved = await res.json()
-          setItems((prev) => {
-            const exists = prev.find((i) => i.productId === product.id)
-            if (exists) {
-              return prev.map((i) => (i.productId === product.id ? { ...i, ...saved, product } : i))
-            }
-            return [...prev, { ...saved, product }]
-          })
+          const resText = await res.text()
+          let saved: any = null
+          try {
+            saved = resText ? JSON.parse(resText) : null
+          } catch {}
+
+          if (saved) {
+            setItems((prev) => {
+              const exists = prev.find((i) => i.productId === product.id)
+              if (exists) {
+                return prev.map((i) => (i.productId === product.id ? { ...i, ...saved, product } : i))
+              }
+              return [...prev, { ...saved, product }]
+            })
+          }
         }
         return res.ok
       }
@@ -173,8 +207,12 @@ function PedidoContent() {
       if (res.ok) {
         router.push(`/confirmado?unitName=${encodeURIComponent(unit?.name || '')}`)
       } else {
-        const err = await res.json()
-        alert(err.error || 'Erro ao enviar pedido.')
+        const resText = await res.text()
+        let err: any = null
+        try {
+          err = resText ? JSON.parse(resText) : null
+        } catch {}
+        alert(err?.error || `Erro ${res.status} ao enviar pedido.`)
         setSubmitting(false)
       }
     } catch (err) {
