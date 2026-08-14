@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
     const [order] = await db
       .insert(orders)
-      .values({ cycleId: cycle.id, unitId, createdBy: null, status: 'draft' })
+      .values({ cycleId: cycle.id, unitId, status: 'draft' })
       .returning()
 
     return NextResponse.json({ cycleId: cycle.id, order: { ...order, items: [] } })
