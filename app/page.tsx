@@ -76,9 +76,6 @@ export default async function HomePage() {
                         →
                       </span>
                     </div>
-                    {u.address && (
-                      <p className="text-xs text-slate-500 line-clamp-2">{u.address}</p>
-                    )}
                   </div>
                   {u.responsible && (
                     <div className="pt-4 mt-4 border-t text-xs text-slate-400">
