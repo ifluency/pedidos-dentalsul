@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Search, ShoppingBag, ArrowLeft, Check, X, LayoutGrid, List } from 'lucide-react'
+import { Search, ShoppingBag, ArrowLeft, Check, X, LayoutGrid, List, Plus, PackagePlus } from 'lucide-react'
 import { ProductCard } from '@/components/product-card'
 import { ProductImage } from '@/components/ui/product-image'
 
@@ -46,6 +46,16 @@ function PedidoContent() {
   const [category, setCategory] = useState('')
   const [view, setView] = useState<'cards' | 'list'>('cards')
   const [loadingProductId, setLoadingProductId] = useState<string | null>(null)
+
+  // States for custom product creation modal
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [newProductName, setNewProductName] = useState('')
+  const [newProductBrand, setNewProductBrand] = useState('')
+  const [newProductCategory, setNewProductCategory] = useState('')
+  const [newProductUnit, setNewProductUnit] = useState('UN')
+  const [newProductQuantity, setNewProductQuantity] = useState(1)
+  const [creatingProduct, setCreatingProduct] = useState(false)
+  const [modalError, setModalError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!unitId) {
@@ -221,6 +231,61 @@ function PedidoContent() {
     }
   }
 
+  async function handleCreateCustomProduct(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newProductName.trim()) {
+      setModalError('O nome do produto é obrigatório.')
+      return
+    }
+
+    setCreatingProduct(true)
+    setModalError(null)
+
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProductName.trim(),
+          brand: newProductBrand.trim() || null,
+          category: newProductCategory.trim() || 'Outros',
+          unitOfMeasure: newProductUnit.trim() || 'UN',
+        }),
+      })
+
+      const resText = await res.text()
+      let createdProduct: Product | null = null
+      try {
+        createdProduct = resText ? JSON.parse(resText) : null
+      } catch {}
+
+      if (!res.ok || !createdProduct?.id) {
+        setModalError((createdProduct as any)?.error || 'Erro ao cadastrar produto.')
+        setCreatingProduct(false)
+        return
+      }
+
+      setProducts((prev) => [createdProduct!, ...prev])
+
+      const added = await handleConfirmQuantity(createdProduct, Math.max(1, newProductQuantity))
+
+      if (added) {
+        setNewProductName('')
+        setNewProductBrand('')
+        setNewProductCategory('')
+        setNewProductUnit('UN')
+        setNewProductQuantity(1)
+        setIsModalOpen(false)
+      } else {
+        setModalError('Produto cadastrado, mas ocorreu um erro ao adicioná-lo ao pedido.')
+      }
+    } catch (err) {
+      setModalError('Erro de conexão com o servidor.')
+    } finally {
+      setCreatingProduct(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -271,6 +336,16 @@ function PedidoContent() {
               <p className="text-xs text-slate-400">Selecione os produtos e envie seu pedido mensal.</p>
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm transition-colors"
+          >
+            <PackagePlus className="h-4 w-4" />
+            <span className="hidden sm:inline">+ Produto Não Listado</span>
+            <span className="sm:hidden">+ Novo</span>
+          </button>
         </div>
       </header>
 
@@ -305,6 +380,18 @@ function PedidoContent() {
                     </option>
                   ))}
                 </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (search) setNewProductName(search)
+                    setIsModalOpen(true)
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-xs border border-indigo-200 transition-colors"
+                >
+                  <PackagePlus className="h-4 w-4" />
+                  <span>Outro Produto</span>
+                </button>
               </div>
 
               <div className="flex items-center gap-1">
@@ -346,9 +433,28 @@ function PedidoContent() {
                   />
                 ))}
                 {filteredProducts.length === 0 && (
-                  <p className="col-span-full text-slate-400 text-sm py-8 text-center">
-                    Nenhum produto encontrado.
-                  </p>
+                  <div className="col-span-full bg-white border border-dashed rounded-2xl p-8 text-center space-y-3 shadow-sm my-4">
+                    <div className="h-12 w-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+                      <PackagePlus className="h-6 w-6" />
+                    </div>
+                    <div className="space-y-1 max-w-md mx-auto">
+                      <h3 className="font-bold text-slate-800 text-base">Produto não encontrado?</h3>
+                      <p className="text-xs text-slate-500">
+                        Não encontrou o item que precisa na lista? Você pode cadastrar e adicioná-lo diretamente ao seu pedido mensal.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (search) setNewProductName(search)
+                        setIsModalOpen(true)
+                      }}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors"
+                    >
+                      <PackagePlus className="h-4 w-4" />
+                      Cadastrar & Adicionar Produto
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -414,6 +520,29 @@ function PedidoContent() {
                         </tr>
                       )
                     })}
+                    {filteredProducts.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="p-8 text-center">
+                          <div className="space-y-3 max-w-md mx-auto">
+                            <PackagePlus className="h-8 w-8 text-indigo-500 mx-auto" />
+                            <p className="text-xs text-slate-500">
+                              Nenhum produto encontrado para sua busca. Clique abaixo para cadastrar um novo produto.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (search) setNewProductName(search)
+                                setIsModalOpen(true)
+                              }}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors inline-flex items-center gap-1.5"
+                            >
+                              <PackagePlus className="h-4 w-4" />
+                              Cadastrar Novo Produto
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -472,6 +601,144 @@ function PedidoContent() {
           </div>
         </div>
       </div>
+
+      {/* Modal Adicionar Produto Não Listado */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl border shadow-xl max-w-lg w-full overflow-hidden space-y-0">
+            <div className="p-5 border-b flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700">
+                  <PackagePlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">Adicionar Produto Não Listado</h3>
+                  <p className="text-xs text-slate-500">Cadastre um item que não está no catálogo para seu pedido.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCustomProduct} className="p-5 space-y-4">
+              {modalError && (
+                <div className="p-3 rounded-lg bg-red-50 text-red-600 border border-red-200 text-xs font-medium">
+                  {modalError}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Nome do Produto <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Luva Nitrílica Rosa P"
+                  value={newProductName}
+                  onChange={(e) => setNewProductName(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-slate-700">Marca / Fabricante</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Supermax"
+                    value={newProductBrand}
+                    onChange={(e) => setNewProductBrand(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-slate-700">Categoria</label>
+                  <input
+                    type="text"
+                    list="existing-categories"
+                    placeholder="Ex: Descartáveis"
+                    value={newProductCategory}
+                    onChange={(e) => setNewProductCategory(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <datalist id="existing-categories">
+                    {categories.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-slate-700">Unidade de Medida</label>
+                  <select
+                    value={newProductUnit}
+                    onChange={(e) => setNewProductUnit(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="UN">UN (Unidade)</option>
+                    <option value="Caixa">Caixa</option>
+                    <option value="Pacote">Pacote</option>
+                    <option value="Frasco">Frasco</option>
+                    <option value="Litro">Litro</option>
+                    <option value="Par">Par</option>
+                    <option value="Rolo">Rolo</option>
+                    <option value="Galão">Galão</option>
+                    <option value="Kit">Kit</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-semibold text-slate-700">Quantidade no Pedido</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={newProductQuantity}
+                    onChange={(e) => setNewProductQuantity(parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={creatingProduct}
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 border rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingProduct || !newProductName.trim()}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {creatingProduct ? (
+                    <>
+                      <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Adicionando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4" />
+                      <span>Adicionar ao Pedido</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
